@@ -20,20 +20,21 @@ import java.util.concurrent.*;
 public class App {
 
 
-    static String fileName = new SimpleDateFormat("yyyyMMddhhmm'.txt'").format(new Date());
-    static File outputFile = new File(fileName);
+
 
     static BlockingQueue<EmailResult> emailToWrite = new LinkedBlockingQueue<EmailResult>(10) {
     };
 
-    static String query = "Corsi+di+cucina";
+    static String query = "Corsi+di+ballo";
+
+    static String fileName = new SimpleDateFormat("yyyyMMddhhmm'.txt'").format(new Date());
+    static File outputFile = new File(query+fileName);
 
     public static void main(String[] args) {
 
 
-     //   List<Integer> pages = Arrays.asList(10);
+        //   List<Integer> pages = Arrays.asList(10);
         List<Integer> pages = Arrays.asList(0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100);
-
 
         ExecutorService pool = Executors.newFixedThreadPool(10);
 
@@ -52,8 +53,6 @@ public class App {
     }
 
 
-
-
     static class MyTask implements Runnable {
 
         private int page;
@@ -64,7 +63,7 @@ public class App {
 
         @Override
         public void run() {
-            Uninterruptibles.sleepUninterruptibly(3,TimeUnit.SECONDS);
+            Uninterruptibles.sleepUninterruptibly(3, TimeUnit.SECONDS);
             Set<String> googleResultsUrl = new HashSet<String>();
             Document doc;
             try {
@@ -78,13 +77,20 @@ public class App {
                     googleResultsUrl.add(resultUrl);
                 }
 
-                for (String result : googleResultsUrl) {
-                    EmailResult emailsEmailResult = EmailScraper.scrapeEmailForUrl(page, result);
-                    if (emailsEmailResult != null) {
-                        if (!emailsEmailResult.getEmails().isEmpty())
-                        emailToWrite.add(emailsEmailResult);
-                    }
 
+                // Here I need another executor, one for each link!
+
+                ExecutorService pool = Executors.newFixedThreadPool(10);
+
+
+                for (String result : googleResultsUrl) {
+                    pool.execute(new OneLinkAnalyzer(result, page));
+                }
+                pool.shutdown();
+                try {
+                    pool.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
                 }
 
             } catch (IOException e) {
@@ -93,6 +99,28 @@ public class App {
 
         }
     }
+
+
+    static class OneLinkAnalyzer implements Runnable {
+
+        private String url;
+        private int pageIndex;
+
+        OneLinkAnalyzer(String url, int pageIndex) {
+            this.url = url;
+            this.pageIndex = pageIndex;
+        }
+
+
+        public void run() {
+            EmailResult emailsEmailResult = EmailScraper.scrapeEmailForUrl(pageIndex, url);
+            if (emailsEmailResult != null) {
+                if (!emailsEmailResult.getEmails().isEmpty())
+                    emailToWrite.add(emailsEmailResult);
+            }
+        }
+    }
+
 
     static class DataConsumer implements Runnable {
 
